@@ -6,6 +6,13 @@
 #include <fstream>
 #include <cstring>
 #include <netinet/in.h>
+#include <cstdint>
+
+struct PacketHeader{
+    uint32_t chank_size;
+    uint32_t chank_id;
+    uint8_t chank_flag;
+}__attribute__((packed));
 
 
 int main(int argc,char *argv[]){
@@ -55,21 +62,35 @@ int main(int argc,char *argv[]){
     char buffer[4096];
     int counter = 1;
     int finish_counter = 0;
-    while(readfile.read(buffer,sizeof(buffer)) || readfile.gcount() > 0){
-        std::streamsize count_result = readfile.gcount();
-        if(count_result > 0){
-            ssize_t result_send = send(client_socket,buffer,count_result,0);
-            if(result_send < 0){
-                std::cout << "Error send" << std::endl;
-                close(client_socket);
-                return 1;
-            }
-        std::cout << "Chunk " << counter << ": ";
-		counter++;
-		std::cout << readfile.gcount() << std::endl;
-        finish_counter = finish_counter + readfile.gcount();
+    PacketHeader header;
+    header.chank_id = 0;
+    while(readfile.read(buffer, sizeof(buffer)) || readfile.gcount() > 0) {
+    uint32_t count_result = readfile.gcount(); 
+    
+    header.chank_id++;
+    header.chank_size = count_result;
+    header.chank_flag = readfile.eof() ? 1 : 0;
+
+    
+    send(client_socket, &header, sizeof(header), 0);
+
+   
+    if (count_result > 0) {
+        ssize_t result_send = send(client_socket, buffer, count_result, 0);
+        if (result_send < 0) {
+            std::cerr << "Error sending data" << std::endl;
+            break;
         }
     }
+
+    
+    std::cout << "Sent chunk " << header.chank_id 
+              << ", size: " << count_result 
+              << ", last: " << (int)header.chank_flag << std::endl;
+
+    
+    if (header.chank_flag == 1) break; 
+}
  std::cout << "Total amount: " << finish_counter << std::endl;
 
  close(client_socket);

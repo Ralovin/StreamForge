@@ -5,6 +5,16 @@
 #include <unistd.h>
 #include <fstream>
 #include <cstring>
+#include <cstdint>
+
+
+
+
+struct PacketHeader{
+    uint32_t chank_size;
+    uint32_t chank_id;
+    uint8_t chank_flag;
+}__attribute__((packed));
 
 int main(int argc,char *argv[]){
     if(argc < 3){
@@ -57,20 +67,37 @@ int main(int argc,char *argv[]){
     struct sockaddr_in client_address;
     socklen_t client_address_sizeof = sizeof(client_address);
 
-    int client_socket = accept(server_socket,(struct sockaddr *)&address,&client_address_sizeof);
+    int client_socket = accept(server_socket,(struct sockaddr *)&client_address,&client_address_sizeof);
 
     char buffer[4096];
     int counter = 1;
     int finish_counter = 0;
     ssize_t  result_recv;
 
+    PacketHeader header;
 
-    while((result_recv = recv(client_socket,buffer,sizeof(buffer),0)) > 0){
-        writefile.write(buffer,result_recv);
-        std::cout << "Chunk " << counter << ": ";
-		counter++;
-		std::cout << result_recv << std::endl;
-        finish_counter = finish_counter + result_recv;
+    while(true){
+        ssize_t result_header= recv(client_socket, &header, sizeof(header),MSG_WAITALL);
+        if (result_header <=0){
+            break;
+        }
+
+        if (header.chank_size > sizeof(buffer)) {
+        std::cout << "Error: chunk size too large!" << std::endl;
+        break;
+        }
+
+        ssize_t result = recv(client_socket, buffer, header.chank_size,MSG_WAITALL);
+
+        writefile.write(buffer,result);
+
+        std::cout << "Chunk ID: " << header.chank_id << " Size: " << result << std::endl;
+
+        if (header.chank_flag == 1) {
+        std::cout << "Last chunk received. Finidhing..." << std::endl;
+        break; 
+    }
+    finish_counter += result;
     }
 
     std::cout << "Total amount: " << finish_counter << std::endl;
